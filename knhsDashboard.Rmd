@@ -1,6 +1,5 @@
 ---
 title: "KALALAKE NATIONAL HIGH SCHOOL LEARNING ANALYTICS DASHBOARD"
-author: "Ramyres A. David"
 output: 
   flexdashboard::flex_dashboard:
     orientation: rows
@@ -277,7 +276,7 @@ simulate_long|>group_by(Quarter,level)|>
 ```
 
 
-### By subject Area
+### By Learning Area
 ```{r}
 simulate_long|>group_by(Quarter, subject)|>summarize(overall=mean(grade))|>
   plot_ly(x= ~Quarter, y=~overall, color = ~subject, type = "scatter", mode="line")|>
