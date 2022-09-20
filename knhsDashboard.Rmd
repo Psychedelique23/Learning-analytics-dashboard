@@ -1,0 +1,288 @@
+---
+title: "KALALAKE NATIONAL HIGH SCHOOL LEARNING ANALYTICS DASHBOARD"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(plotly)
+library(ggthemes)
+library(readxl)
+library(DT)
+library(forcats)
+library(shiny)
+library(fontawesome)
+library(scales)
+library(data.table)
+simulate <- read_excel("dashboard.xlsx", sheet = "overall")
+number <- read_excel("dashboard.xlsx", sheet = "number")
+simulate_long<-simulate|>pivot_longer(cols = 4:11, names_to = "subject", values_to = "grade")
+simulate_long<-simulate_long|>mutate_if(is.character, as.factor)
+pct_change<-simulate_long|>group_by(Quarter)|>summarize(average=mean(grade))
+pct_change<-as.data.table(pct_change)
+rate<-pct_change[,.(Quarter, change=(average-shift(average,1))/shift(average,1))]
+my_colors<-c("DNME"="#c7e9b4","Fairly Satisfactory" = "#7fcdbb","Satisfactory"="#41b6c4","Very Satisfactory" = "#1d91c0","Outstanding"="#225ea8")
+my_colors_2<-c( "#dad873" ,"#58b368","#309975","#454d66")
+```
+
+OVERVIEW
+=======================================================================
+
+Column {data-width=350 .sidebar}
+-----------------------------------------------------------------------
+
+The KNHS Learning Analytics Dashboard shows the historical summary of students' learning performance across multiple dimensions. 
+
+
+Select the desired academic year and quarterly grading to view the global performance metrics.
+```{r}
+selectInput(
+            "academic_year", 
+            label = h3("Academic Year:"),
+            choices = c("2021-2022")
+)
+selectInput(
+            "quarter_variable", 
+            label=h3("Quarter:"), 
+            choices=unique(simulate_long$Quarter))
+```
+
+
+Select the desired learning area to view the classification of learners.
+```{r}
+
+selectInput(
+            "subject_variable", 
+            label=h3("Subject Area:"), 
+            choices=unique(simulate_long$subject))
+```
+
+Rows {data-height = 150)
+-----------------------------------------------------------------------
+
+### Number of Learners
+
+```{r}
+
+renderValueBox({
+  total<-number|>
+    filter(Quarter %in% input$quarter_variable)|>
+    select(number)
+  valueBox(total, caption="Total Enrollees",icon = "fa fa-users")
+})
+
+
+```
+
+### Average Academic Performance
+
+```{r}
+renderValueBox({
+  average<-simulate_long|>
+    filter(Quarter %in% input$quarter_variable)|>
+    summarize(round(mean(grade),2))
+  valueBox(average, caption="Overall Performance",icon = "fa fa-line-chart")
+})
+```
+
+
+
+### Progress Rate
+``` {r}
+renderValueBox({
+  change<-rate|>
+    mutate(prop=change)|>
+    filter(Quarter %in% input$quarter_variable)|>
+    select(prop)|>mutate(prop=percent(prop, accuracy = 0.01))
+  valueBox(change, caption = "Overall Progress Rate", icon="fa fa-percent")
+})
+```
+
+### Passing Rate
+```{r}
+renderValueBox({
+  passers<-simulate_long|>
+    filter(Quarter %in% input$quarter_variable)|>
+    group_by(id,level)|>
+    summarize(average=mean(grade))|>
+    mutate(pass=if_else(average<75,"Fail","Pass"))|>ungroup()|>select(pass)|>
+  summarize(rate=mean(pass=="Pass"))|>mutate(rate=percent(rate, accuracy = 0.01))
+  valueBox(passers, caption="Passing Rate",icon = "fa fa-graduation-cap")
+})
+```
+
+Rows 
+--------------------------------------------------------------------
+
+### **Learning Area Performance Ranking**
+```{r}
+
+# Summarize the data for each subject area then plot a lollipop chart and sort them according to their values. 
+
+per_subj<-reactive({
+  simulate_long|>
+    filter(Quarter %in% input$quarter_variable)|>
+    group_by(subject)|>
+    summarize(sub=round(mean(grade),2))
+})
+
+renderPlotly({
+    lollipop<-ggplot(per_subj(),aes(reorder(subject, sub), sub,text=subject))+      geom_segment(aes(x=reorder(subject, sub), xend=reorder(subject, sub), y=60, yend=sub),
+                    lwd = 1.25, color="grey")+
+      geom_point(size = 7.5, col = "#4773aa",alpha=0.9)+
+      geom_text(aes(label = sub), color = "white", size = 2.7)+
+      coord_flip()+
+      theme_minimal()+
+      theme(axis.title = element_blank(),
+            panel.grid.major.y = element_blank(),
+            axis.text.y = element_text(size=14)
+            )
+    ggplotly(lollipop, tooltip = "text")
+    })
+```
+
+### **Learners' Classification**
+```{r}
+# Creating the classification of the grades which will be used for stacked bar plot and the donut chart.
+
+for_hist<- reactive({
+  simulate_long|>
+    filter(Quarter %in% input$quarter_variable,
+           subject %in% input$subject_variable)|>
+    group_by(id, level)|>
+    summarize(average=mean(grade))|>
+    mutate(category=as.factor(case_when(average<75~"DNME",
+                              average<80~"Fairly Satisfactory",
+                              average<85~"Satisfactory",
+                              average<90~"Very Satisfactory",
+                              average<=100~"Outstanding")))|>
+    mutate(category=factor(category, levels = c("Outstanding","Very Satisfactory","Satisfactory","Fairly Satisfactory","DNME")))
+})
+
+
+for_hist2<-reactive({
+  simulate_long|>
+    filter(Quarter %in% input$quarter_variable)|>
+    group_by(id, level)|>
+    summarize(average=mean(grade))
+})
+
+# For the donut chart
+
+renderPlotly({
+  for_hist()|>
+    ungroup()|>group_by(category)|>tally()|>
+    plot_ly(labels=~category, values=~n,  
+            textinfo='label+percent',
+            insidetextorientation='radial')|>
+        add_pie(hole=0.6)|>
+        layout(showlegend=F)
+})
+
+```
+
+
+
+Rows {data-height=350}
+------------------------------------------------------------------
+
+### **Overall Performance Distribution**
+```{r}
+
+# Histogram of grades 
+
+renderPlotly({
+  ggplot(for_hist2(), aes(average))+geom_histogram(binwidth = 1, fill="#6AB187", color="white")+
+    theme_minimal()+
+    theme(legend.position = "none", 
+          axis.title = element_blank(), 
+          panel.grid.major.x = element_blank())
+})
+```
+
+### **Learners' Classification per Grade Level (%)**
+```{r}
+ # Stacked bar plot showing the distribution of learners' classification per grade level.
+
+renderPlotly({
+for_hist()|>
+    ungroup()|>
+    group_by(level, category)|>
+    tally()|>
+    group_by(level)|>
+    mutate(proportion=round(n/sum(n)*100),0)|>
+    ggplot(aes(x=level,y=proportion, fill=category))+
+      geom_col(position="fill")+scale_y_continuous(labels = scales::percent)+
+      coord_flip()+
+      theme_minimal()  +
+      scale_fill_manual(values=my_colors)+
+      theme(
+        panel.grid = element_blank(),
+        axis.title.x = element_blank(), 
+        legend.position = "top", 
+        axis.title.y = element_blank(), 
+        axis.text.y = element_text(size=12))
+
+})
+```
+
+
+
+
+TREND
+=========================================================
+
+Rows 
+---------------------------------------------------------
+### Overall Trend
+
+```{r}
+
+# Plot the overall performance trend
+
+z<-simulate_long|>group_by(Quarter)|>summarize(performance=round(mean(grade),2))|>
+ ggplot(aes(Quarter, performance, group=1))+geom_point(pch=21, size=10, bg="#454d66")+geom_line(lwd=2.5, color="#17BEBB")+
+  geom_text(aes(label=performance), color="white")+
+theme_solarized()+theme(panel.grid = element_blank())
+
+
+ggplotly(z)|>layout(xaxis = list(autorange = TRUE, title="QUARTER"),
+         yaxis = list(autorange = TRUE, title = " "))
+```
+
+
+Rows
+---------------------------------------------------------
+### By Grade level
+```{r}
+simulate_long|>group_by(Quarter,level)|>
+                  mutate(level=as.factor(level))|>
+                  summarize(performance=mean(grade))|>
+                  plot_ly(x= ~Quarter, y=~performance, color = ~level, type = "scatter", mode="line", colors = my_colors_2)|>
+  layout(xaxis = list(title = 'QUARTER',
+                      showgrid = F,
+                      zerolinecolor = '#ffff'
+  ),
+  yaxis = list(title = ' ',
+               zerolinecolor = '#ffff',
+               showgrid = F))
+```
+
+
+### By subject Area
+```{r}
+simulate_long|>group_by(Quarter, subject)|>summarize(overall=mean(grade))|>
+  plot_ly(x= ~Quarter, y=~overall, color = ~subject, type = "scatter", mode="line")|>
+  layout(xaxis = list(title = 'QUARTER',
+                      showgrid = F,
+                      zerolinecolor = '#ffff'
+  ),
+  yaxis = list(title = ' ',
+               zerolinecolor = '#ffff',
+               showgrid = F))
+```
