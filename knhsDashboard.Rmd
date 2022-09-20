@@ -1,10 +1,13 @@
 ---
 title: "KALALAKE NATIONAL HIGH SCHOOL LEARNING ANALYTICS DASHBOARD"
+author: "Ramyres A. David"
 output: 
   flexdashboard::flex_dashboard:
     orientation: rows
     vertical_layout: fill
+    source_code: embed 
 runtime: shiny
+
 ---
 
 ```{r global, include=FALSE}

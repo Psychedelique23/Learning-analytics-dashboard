@@ -1,0 +1,13 @@
+name: knhsDashboard
+title: knhsDashboard
+username:
+account: knhs
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6697444
+bundleId: 6321552
+url: https://knhs.shinyapps.io/knhsDashboard/
+when: 1663709643.15658
+lastSyncTime: 1663709643.1566
+asMultiple: FALSE
+asStatic: FALSE
